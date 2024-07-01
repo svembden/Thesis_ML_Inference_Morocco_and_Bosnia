@@ -12,7 +12,7 @@
 
 ### 0. Setup ----
 # install (if applicable) and load relevant packages
-required_packages <- c("ranger", "glmnet", "e1071", "xgboost", "devtools", "readstata13")
+required_packages <- c("ranger", "glmnet", "e1071", "xgboost", "devtools", "readstata13", "dplyr", "tidyverse")
 missing <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
 if(length(missing) > 0L) install.packages(missing) # uncomment to install
 lapply(required_packages, require, character.only = TRUE)
@@ -27,8 +27,8 @@ library("GenericML", lib.loc = "C:/Users/semva/OneDrive/Documenten/Study/Thesis/
 load("preprocessing/data/controls_description.RData")
 
 # load Y vars en treatment
-ID <- "credit" ## CHANGE THIS TO YOUR Y VAR [credit, self-employment, income, hours-worked, consumption]
-subfile <- NA # CHANGE THIS TO YOUR SUBFILE [self-employment:assetvalue,bm_revenue,bm_expenses,bm_profit; consumption:nondcTR]
+ID <- "self-employment" ## CHANGE THIS TO YOUR Y VAR [credit, self-employment, income, hours-worked, consumption]
+subfile <- "bm_profit" # CHANGE THIS TO YOUR SUBFILE [self-employment:assetvalue,bm_revenue,bm_expenses,bm_profit; consumption:nondcTR]
 
 temp_env <- new.env()
 if (is.na(subfile)) { subfile <- ID }
@@ -36,7 +36,7 @@ load(paste0("preprocessing/data/", ID, "/", subfile, "_Y.RData"), envir = temp_e
 Y_variable <- temp_env[[ls(temp_env)[1]]]
 
 # load data
-data <- read.dta13("data/raw/Merged-dataset.dta")
+data <- read.dta13("preprocessing/data/raw/Merged-dataset.dta")
 # additional cleaning: b_resp_ms, 8 must be a 6
 data$b_resp_ms[data$b_resp_ms == 8] <- 6
 
@@ -52,6 +52,7 @@ constant_columns <- sapply(data_red, function(col) length(unique(col)) == 1)
 
 # dependent variables
 Y_F <- as.data.frame(data_red[, Y_nams])
+colnames(Y_F) <- Y_nams
 
 # treatment assignment
 D <- data_red$treatment
@@ -69,6 +70,30 @@ is_binary <- function(x) {
   # Check if all elements are either 0 or 1
   all(x %in% c(0, 1))
 }
+
+
+## Visualize data
+# histogram covariates
+Zdf <- as.data.frame(Z)
+Zdf %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~ key, scales = 'free_x')
+
+# histogram outcome variables
+Y_F %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  geom_histogram(bins = 50) +
+  facet_wrap(~ key, scales = 'free_x')
+
+# boxplot outcome variables
+Y_F %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_boxplot() +
+  coord_flip()
 
 ### 2. Input ----
 # specify learners
@@ -102,7 +127,7 @@ seed = 20220621                          # seed
 store_learners = TRUE                    # store learners
 
 # initialize lists
-meanDF <- data.frame(colnames = c("variable", "mean_treated", "mean_control", "uATE"))
+meanDF <- data.frame(colnames = c("variable", "mean", "mean_treated", "mean_control", "uATE"))
 uATE <- Y_nams # unconditional ATE
 
 # run GenericML
